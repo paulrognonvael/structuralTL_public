@@ -1,0 +1,312 @@
+
+summarize.sim <- function(scenario,path, n.val){
+  require(tidyverse)
+  
+  setwd(paste0(path,'/scenario',scenario))
+  
+  res.varn <- data.frame()
+  time.varn <- data.frame()
+  
+  for (n  in n.val){
+    temp<-read.csv(paste0('sim.result.scenario',scenario,'.n',n,".csv"))
+    summary.sim.result <- temp %>% group_by(method) %>% 
+      summarise(prob.recovery = mean(recovery, na.rm = TRUE),
+                mean.size.sel =mean(est.size, na.rm = TRUE), 
+                mean.FDR = mean(FDR, na.rm = TRUE),
+                mean.power = mean(power, na.rm = TRUE),
+                mean.mse = mean(est.mse, na.rm = TRUE))
+    summary.sim.result$n <- rep(n, nrow(summary.sim.result))
+    res.varn<- rbind(res.varn,summary.sim.result)
+    
+    summary.sim.time <- temp %>% summarise(ASTL0 = mean(time.l0))
+    summary.sim.time$n <- rep(n, nrow(summary.sim.time))
+    summary.sim.time$p <- rep(2*n, nrow(summary.sim.time))
+    summary.sim.time$transglm <- mean(temp$time.trans.glm)
+    time.varn <- rbind(time.varn,summary.sim.time)
+  }
+  
+  method.sel <- c("S.Abis.TL","S.A.sd", #"S.Abis.sd","S.Abis",
+                  "EBIC","lasso.cv",'trans.glm')
+  
+  res.varn <- res.varn %>% 
+    filter(method%in%method.sel)
+  
+  res.varn$method <- factor(res.varn$method, levels = method.sel)
+  
+  time.varn.melt = time.varn |> pivot_longer(cols=c('ASTL0','transglm'), 
+                                             values_to = 'time', names_to = 'method')
+  cat('max ratio time ASTL0/transglm in Scenario',scenario,':', max(time.varn$ASTL0/time.varn$transglm),'\n')
+  #### Prob recovery ####
+  res.varn %>%
+    ggplot() + 
+    geom_line(aes(x=n, y=prob.recovery, col=method, linetype=method), size=0.5) + 
+    # coord_cartesian(ylim=c(0,1)) +
+    geom_point(aes(x=n,y=prob.recovery,shape=method),size=1.5) +
+    theme_light(base_size = 8)+
+    scale_color_manual(values=c(#'black',
+      'black',
+      #'darkgrey',
+      'darkgrey',
+      'lightgrey','lightgrey', 'lightgrey'),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_linetype_manual(values=c(#1,
+      1,
+      #1,
+      1,
+      2,1,1),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_shape_manual(values=c(#NA,
+      NA,
+      #NA,
+      NA,
+      NA,3,4),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    ylab('Prob. recovery') +
+    scale_x_continuous(labels = ~paste0('(',.,',',2*., ")"), name = "(n,p)") +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          legend.margin=margin(0,0,0,0), 
+          legend.box.margin=margin(-5,-10,0,-30),
+          legend.position="bottom",
+          legend.title = element_blank(),
+          legend.key.spacing.x = unit(0, 'pt'),
+          legend.key.spacing.y = unit(0, 'pt'),
+          legend.key.width = unit(14, 'pt'),
+          legend.key.height = unit(9, 'pt'),
+          legend.text=element_text(size=8),
+    ) +
+    guides(color=guide_legend(nrow=2,byrow=TRUE))
+  
+  ggsave(paste0('p.probrecov.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  ggsave(paste0('~/structuralTL/paper/images/p.probrecov.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  
+  
+  #### FDR ####
+  
+  res.varn %>%
+    ggplot() + 
+    geom_line(aes(x=n, y=mean.FDR, col=method, linetype=method), size=0.5) + 
+    geom_point(aes(x=n,y=mean.FDR,shape=method),size=1.5) +
+    # coord_cartesian(ylim=c(0,1)) +
+    theme_light(base_size = 8)+
+    scale_color_manual(values=c(#'black',
+      'black',
+      #'darkgrey',
+      'darkgrey',
+      'lightgrey','lightgrey', 'lightgrey'),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_linetype_manual(values=c(#1,
+      1,
+      #1,
+      1,
+      2,1,1),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_shape_manual(values=c(#NA,
+      NA,
+      #NA,
+      NA,
+      NA,3,4),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    ylab('FDR') +
+    scale_x_continuous(labels = ~paste0('(',.,',',2*., ")"), name = "(n,p)") +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          legend.margin=margin(0,0,0,0), 
+          legend.box.margin=margin(-5,-10,0,-30),
+          legend.position="bottom",
+          legend.title = element_blank(),
+          legend.key.spacing.x = unit(0, 'pt'),
+          legend.key.spacing.y = unit(0, 'pt'),
+          legend.key.width = unit(14, 'pt'),          
+          legend.key.height = unit(9, 'pt'),           
+          legend.text=element_text(size=8),
+    ) +
+    guides(color=guide_legend(nrow=2,byrow=TRUE))
+  
+  ggsave(paste0('p.FDR.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  ggsave(paste0('~/structuralTL/paper/images/p.FDR.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')  
+  
+  #### Power ####
+  
+  res.varn %>%
+    ggplot() + 
+    geom_line(aes(x=n, y=mean.power, col=method, linetype=method), size=0.5) + 
+    geom_point(aes(x=n,y=mean.power,shape=method),size=1.5) +
+    # coord_cartesian(ylim=c(0,1)) +
+    theme_light(base_size = 8)+
+    scale_color_manual(values=c(#'black',
+      'black',
+      #'darkgrey',
+      'darkgrey',
+      'lightgrey','lightgrey', 'lightgrey'),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_linetype_manual(values=c(#1,
+      1,
+      #1,
+      1,
+      2,1,1),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_shape_manual(values=c(#NA,
+      NA,
+      #NA,
+      NA,
+      NA,3,4),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    ylab('Power') +
+    scale_x_continuous(labels = ~paste0('(',.,',',2*., ")"), name = "(n,p)") +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          legend.margin=margin(0,0,0,0), 
+          legend.box.margin=margin(-5,-10,0,-30),
+          legend.position="bottom",
+          legend.title = element_blank(),
+          legend.key.spacing.x = unit(0, 'pt'),
+          legend.key.spacing.y = unit(0, 'pt'),
+          legend.key.width = unit(14, 'pt'),
+          legend.key.height = unit(9, 'pt'),          
+          legend.text=element_text(size=8),
+    ) +
+    guides(color=guide_legend(nrow=2,byrow=TRUE))
+  
+  ggsave(paste0('p.power.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  ggsave(paste0('~/structuralTL/paper/images/p.power.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  
+  #### Estimation mse ####
+  
+  res.varn %>%
+    ggplot() + 
+    geom_line(aes(x=n, y=mean.mse, col=method, linetype=method), size=0.5) + 
+    geom_point(aes(x=n,y=mean.mse,shape=method),size=1.5) +
+    theme_light(base_size = 8)+
+    scale_y_log10() +
+    scale_color_manual(values=c(#'black',
+      'black',
+      #'darkgrey',
+      'darkgrey',
+      'lightgrey','lightgrey', 'lightgrey'),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_linetype_manual(values=c(#1,
+      1,
+      #1,
+      1,
+      2,1,1),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    scale_shape_manual(values=c(#NA,
+      NA,
+      #NA,
+      NA,
+      NA,3,4),
+      labels=c(#bquote(hat(S)^'EB,b'),
+        'ASTL0',
+        #bquote(hat(S)^'EB'),
+        bquote(hat(S)^'asd'),
+        'EBIC','lasso', 'Trans-glm'))+
+    ylab('MSE') +
+    scale_x_continuous(labels = ~paste0('(',.,',',2*., ")"), name = "(n,p)") +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          legend.margin=margin(0,0,0,0), 
+          legend.box.margin=margin(-5,-10,0,-30),
+          legend.position="bottom",
+          legend.title = element_blank(),
+          legend.key.spacing.x = unit(1, 'pt'),
+          legend.key.spacing.y = unit(0, 'pt'),
+          legend.key.width = unit(12, 'pt'),
+          legend.key.height = unit(9, 'pt'),          
+          legend.text=element_text(size=8),
+          legend.justification.bottom = 'left',
+          legend.spacing = grid::unit(0, "pt")
+    ) +
+    guides(color=guide_legend(nrow=2,byrow=TRUE))
+  ggsave(paste0('p.est.mse.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  ggsave(paste0('~/structuralTL/paper/images/p.est.mse.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  
+  #### ASTL0 and Trans-glm computation time ####
+  
+  time.varn.melt %>% 
+    ggplot() + 
+    geom_line(aes(x=n, y=time, col=method, linetype=method), size=0.5) + 
+    geom_point(aes(x=n, y=time, ,shape=method), size=0.5) + 
+    # coord_cartesian(ylim=c(0,1)) +
+    theme_light(base_size = 8)+
+    scale_color_manual(values=c(#'black',
+      'black', 'lightgrey'),
+      labels=c('ASTL0', 'Trans-glm'))+
+    scale_linetype_manual(values=c(
+      1,1),
+      labels=c('ASTL0', 'Trans-glm'))+
+    scale_shape_manual(values=c(
+      NA,4),
+      labels=c('ASTL0', 'Trans-glm'))+
+    ylab('computation time') +
+    scale_x_continuous(labels = ~paste0('(',.,',',2*., ")"), name = "(n,p)") +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          legend.margin=margin(0,0,0,0), 
+          legend.box.margin=margin(-5,-10,0,-30),
+          legend.position="bottom",
+          legend.title = element_blank(),
+          legend.key.spacing.x = unit(0, 'pt'),
+          legend.key.spacing.y = unit(0, 'pt'),
+          legend.key.width = unit(14, 'pt'),
+          legend.key.height = unit(9, 'pt'),          
+          legend.text=element_text(size=8),
+    ) +
+    guides(color=guide_legend(nrow=1))
+  
+  ggsave(paste0('p.time.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+  ggsave(paste0('~/structuralTL/paper/images/p.time.sc',scenario,'.pdf'),width = 48, height = 62, units='mm')
+}
+
+library(tidyverse)
+
+path = "~/structuralTL/simulations"
+n.val=c(50,100,200,300,400,700)#,400,700)
+for(scenario in 1:6){
+  summarize.sim(scenario,path, n.val)
+}
+
