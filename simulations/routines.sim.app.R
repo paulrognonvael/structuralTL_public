@@ -1,16 +1,31 @@
-# Converts a string of variable indices separated by commas into a vector
+
+##########################################################################
+# . MISCELLANEOUS HELPER FUNCTIONS
+##########################################################################
+
+## Converts a string of variable indices separated by commas into a vector
 model.char2vec <- function(model.char){
   return(as.numeric(strsplit(model.char,",")[[1]]))
 }
 
-# Gets the indices corresponding to nonzero coeff lasso estimates 
+## Gets the indices corresponding to nonzero coeff lasso estimates 
 get.model <- function(glmnet.beta){
   return(paste(unname(which(glmnet.beta!=0)),collapse=","))
 }
 
+##########################################################################
+# . FUNCTIONS TO COMPUTE BLOCK PARATION AND l0 SCORES
+##########################################################################
 
-# Outputs a block partition from a list of subsets selected on source 
+## Outputs a block partition from a list of subsets selected on source 
 fromSelToBlocks = function(source_sel,cols_target_X){
+  #Input:
+  # source_sel: a list of vectors of names of target covariates found relevant in source datasets
+  # col_target_X: names of target covariates
+  #Output:
+  # blocks: a list where each element is a vector of covariates corresponding to a block
+  
+  
   # converting source selection subsets into indicator value for each target covariate
   for(k in 1:length(source_sel)){
     source_sel[[k]] <- cols_target_X %in% source_sel[[k]]
@@ -27,37 +42,24 @@ fromSelToBlocks = function(source_sel,cols_target_X){
   return(blocks)
 }
 
-
-## Returns the number of false positive and false negatives
-nb.error<-function(sel.vect, true.beta, type, block=NULL){
-  truth <- true.beta != 0
-  sel.model <- rep(FALSE, length(true.beta))
-  sel.model[sel.vect] <- TRUE
-  
-  if(is.null(block)){
-    block=1:length(true.beta)
-  }
-  
-  if(type=='I'){
-    tI <- truth==FALSE & sel.model==TRUE
-    return(sum(tI[block]))
-  } else if (type=='II'){
-    tII <- truth==TRUE & sel.model==FALSE
-    return(sum(tII[block]))
-  } else{
-    stop("Invalid type of error")
-  }
-  
-}
-
-
 ## Returns the l0 scores for a given model and block partition
-l0score <- function(model, y, X.design, blocks,s.j.hat){
+l0score <- function(model, y, X.design, blocks, s.j.hat){
+  # Input:
+  # - model: vector of indices of target covariates
+  # - y: target outcome
+  # - X.design: target covariates
+  # - block: list where each element is a vector of indices of target covariates forming a block
+  # - s.j.hat: block estimates of number of nonzero coefficients
+  # Output:
+  # a vector with model name and l0 scores: S^ATL (kappa_j^A), S^ATL (kappa_j^AEB), S^asd (kappa^A), S^asd (kappa^AEB), and selected by EBIC
+  
+  # initialize quantities
   beta.hat <- rep(0,ncol(X.design))
   k <- 0
   k.j <-rep(0,length(blocks))
   n <- length(y)
   
+  # compute number of variables in each block in the model
   if (sum(is.na(model))!=length(model)){
     model <- model[!is.na(model)]
     X.model <- X.design[,model]
@@ -66,37 +68,34 @@ l0score <- function(model, y, X.design, blocks,s.j.hat){
     k <- sum(beta.hat !=0)
   }
   
+  # compute estimate of total number of nonzero coeff and prediction by model
   s.hat <- sum(s.j.hat)
-  
   pred <- X.design%*%beta.hat
   
-  # kappa^{0}
-  # sc.kappa.o <- 0.5*n*log(sum((y-pred)^2)/n) + k*0.5*log(n) + k*log(ncol(X.design))
-  
-  # EBIC
+  # score EBIC
   sc.ebic <- 0.5*n*log(sum((y-pred)^2)/n) + 0.5*k*log(n) + log(choose(ncol(X.design),k))
   
-  # S^A
+  # score S^asd (kappa^AEB)
   sc.A.sd <- 0.5*n*log(sum((y-pred)^2)/n) + 0.5*k*log(n) + k*log(ncol(X.design)/s.hat-1)
 
-  # S^Abis
+  # score S^asd (kappa^A)
   sc.Abis.sd <- 0.5*n*log(sum((y-pred)^2)/n) + 0.5*k*log(n) + k*log(ncol(X.design)-s.hat)
   
-  # S^ATL0
+  # score S^ATL (kappa_j^AEB)
   penAEB.j <- rep(NA,length(blocks))
   for(j in 1:length(blocks)){
     penAEB.j[j] = k.j[j]*log(ncol(X.design[,blocks[[j]]])/s.j.hat[j]-1)
   }
   sc.A.TL <- 0.5*n*log(sum((y-pred)^2)/n) + 0.5*k*log(n) + sum(penAEB.j)
   
-  # S^ATL0bis
+  # score S^ATL (kappa_j^A)
   penA.j <- rep(NA,length(blocks))
   for(j in 1:length(blocks)){
     penA.j[j] = k.j[j]*log(ncol(X.design[,blocks[[j]]])-s.j.hat[j])
   }
   sc.Abis.TL <- 0.5*n*log(sum((y-pred)^2)/n) + 0.5*k*log(n) + sum(penA.j)
   
-  
+  # model short name
   models.val <- paste(model, collapse = "," )
   
   return(c(models.val, sc.ebic,
@@ -115,9 +114,20 @@ compute.l0scores<-function(models, y, X.design, blocks, s.j.hat){
   return(l0score.df)
 }
 
-
-## Returns S^ATL0, S^AbisTLO, S^A, S^Abis, and selected by EBIC for a given block partition 
+## For a given block partition
+## Uses MCMC algorithm to score models by initial l0 penalty kappa^0 = 1/2 log(n) + log(p)
+## estimates block number of nonzero coefficients by sum of pseudo posterior probabilities
+## scores models visited by MCMC by the penalties S^ATL (kappa_j^A), S^ATL (kappa_j^AEB), S^asd (kappa^A), S^asd (kappa^AEB), and EBIC 
+## Returns S^ATL (kappa_j^A), S^ATL (kappa_j^AEB), S^asd (kappa^A), S^asd (kappa^AEB), and selected by EBIC for a given block partition 
 selectionl0 <-function(y, X.design, blocks){
+  # Input:
+  # y: target outcome
+  # X.design: target covariates
+  # blocks: block partition
+  #
+  # Output:
+  # S^ATL (kappa_j^A), S^ATL (kappa_j^AEB), S^asd (kappa^A), S^asd (kappa^AEB), and selected by EBIC
+  # l0 scores of models visited by MCMC for all the penalties
   require(modelSelection)
   t0 <- Sys.time()
   
@@ -140,10 +150,11 @@ selectionl0 <-function(y, X.design, blocks){
   top.kappa.o.fmted <- str_split_fixed(top.kappa.o.list$modelid, ",",max.model.size)
   top.kappa.o.fmted[top.kappa.o.fmted == ""] <- NA
   class(top.kappa.o.fmted) <- "numeric"
+  
   # sanity check can't have models with more than n variables
   top.kappa.o.fmted <- top.kappa.o.fmted[,1:min(nrow(X.design)-1,ncol(top.kappa.o.fmted))]
   
-  # Estimate s, s.hat, sj.hat
+  # Estimate s, s.hat, s.j.hat
   margprob <- best.kappa.o.res$msfit$margpp
   s.hat <- sum(margprob,na.rm=TRUE)
   s.j.hat <- sapply(blocks, function(b){sum(margprob[b],na.rm=TRUE)})
@@ -151,8 +162,7 @@ selectionl0 <-function(y, X.design, blocks){
   # Cleaning
   rm(best.kappa.o.res)
   
-  ## selected models
-  
+  # Compute l0 scores for 
   l0score.df <- compute.l0scores(top.kappa.o.fmted, y, X.design, blocks, s.j.hat)
   
   t1 <- Sys.time()
@@ -196,16 +206,22 @@ selectionl0 <-function(y, X.design, blocks){
   return(list(sel=df,scores= l0score.df, blocks=blocks))
 }
 
-## Gets the block partition and returns S^ATL0, S^EBTLO, S^A, and selected by EBIC 
+##########################################################################
+# . WRAPPER FUNCTIONS RETURNING MODEL SELECTED by ASTLO, standard l0 and EBIC
+##########################################################################
+
+# Gets the block partition and returns S^ATL (kappa_j^A), S^ATL (kappa_j^AEB), S^asd (kappa^A), S^asd (kappa^AEB), and selected by EBIC
 ATL0andOtherl0 <- function(target_y, target_X, source_sel=NULL, source_data=NULL){
   require(modelSelection)
+  
+  # Construction of the block partition 
   source_sel_all = source_sel
   if(!is.null(source_data)){
     cat('   Selecting variables in the source datasets\n')
     source.data_sel <- vector(mode = "list", length = length(source_data))
     
+    ## Select subset in each source dataset provided
     for(k in 1:length(source_data)){
-      # Selecting subset in each source 
       source.X = source_data[[k]]$x
       source.y = source_data[[k]]$y[,1]
       bestIC.k <- modelSelection::bestIC(source.y, source.X, 
@@ -213,16 +229,17 @@ ATL0andOtherl0 <- function(target_y, target_X, source_sel=NULL, source_data=NULL
                                 verbose=FALSE, maxvars= nrow(source.X)
                                 #vmaxvars=nrow(X.design)*0.9,# deltaini=ini,
       )
-      # retrieving variable names of selected subset
+      ### retrieving variable names of selected subset
       source.data_sel[[k]] <- colnames(source.X)[model.char2vec(bestIC.k$models$modelid[1])]
     }
     ## Adding subsets selected on source data
     source_sel_all = append(source_sel_all,source.data_sel)
   }  
 
-  ## Getting block partition
+  ## Get block partition
   blocks = fromSelToBlocks(source_sel_all,colnames(target_X))
   
+  # Run selectionl0 for the block partition
   cat('   Selecting variables in the target dataset\n')
   res <- selectionl0(y = target_y, X.design = target_X, blocks= blocks)
   names(source_sel_all) = 'source_sel_all'
@@ -230,6 +247,10 @@ ATL0andOtherl0 <- function(target_y, target_X, source_sel=NULL, source_data=NULL
   return(res)
 }
 
+
+##########################################################################
+# . FUNCTIONS TO PROCESS SIMULATION OUTPUTS
+##########################################################################
 
 ## Returns MSE in coef estimates for a selected model
 mse.est <- function(model,y, X.design, beta_star){
@@ -385,6 +406,26 @@ lasso.scad.transglm.cv <- function(y, X.design, trans.glm = TRUE, source.data=NU
 
 }
 
+## Returns the number of false positive and false negatives
+nb.error<-function(sel.vect, true.beta, type, block=NULL){
+  truth <- true.beta != 0
+  sel.model <- rep(FALSE, length(true.beta))
+  sel.model[sel.vect] <- TRUE
+  
+  if(is.null(block)){
+    block=1:length(true.beta)
+  }
+  
+  if(type=='I'){
+    tI <- truth==FALSE & sel.model==TRUE
+    return(sum(tI[block]))
+  } else if (type=='II'){
+    tII <- truth==TRUE & sel.model==FALSE
+    return(sum(tII[block]))
+  } else{
+    stop("Invalid type of error")
+  }
+}
 
 ## Returns false positives, false negatives, FDR, power from a simulation output
 postprocess.sel.sim <- function(sim.result.df,beta_star,blocks=NULL){
