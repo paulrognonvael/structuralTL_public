@@ -3,7 +3,7 @@ model.char2vec <- function(model.char){
   return(as.numeric(strsplit(model.char,",")[[1]]))
 }
 
-# Gets the indices corresponding to nonzero coeff estimates 
+# Gets the indices corresponding to nonzero coeff lasso estimates 
 get.model <- function(glmnet.beta){
   return(paste(unname(which(glmnet.beta!=0)),collapse=","))
 }
@@ -11,13 +11,16 @@ get.model <- function(glmnet.beta){
 
 # Outputs a block partition from a list of subsets selected on source 
 fromSelToBlocks = function(source_sel,cols_target_X){
-  # converting source selection subsets into 0,1 vector 
+  # converting source selection subsets into indicator value for each target covariate
   for(k in 1:length(source_sel)){
     source_sel[[k]] <- cols_target_X %in% source_sel[[k]]
   }
+  # Binding indicator vectors in a single matrix
   source_sel.concat = data.frame(do.call('cbind',source_sel)) 
   colnames(source_sel.concat) = sprintf('source%s',1:length(source_sel))
+  # Get a source selection value for each target covariate e.g 1,0,1
   comb = apply(source_sel.concat, MARGIN = 1, FUN=paste, collapse=',')
+  # Partition target covariates by source selection value (e.g 1,0,1)
   source_sel.concat$block = factor(comb)
   source_sel.concat$var = 1:nrow(source_sel.concat)
   blocks = lapply(levels(source_sel.concat$block),FUN =function (l) which(source_sel.concat$block==l))
@@ -26,7 +29,6 @@ fromSelToBlocks = function(source_sel,cols_target_X){
 
 
 ## Returns the number of false positive and false negatives
-
 nb.error<-function(sel.vect, true.beta, type, block=NULL){
   truth <- true.beta != 0
   sel.model <- rep(FALSE, length(true.beta))
@@ -49,7 +51,7 @@ nb.error<-function(sel.vect, true.beta, type, block=NULL){
 }
 
 
-## Returns the l0 scores for a given model
+## Returns the l0 scores for a given model and block partition
 l0score <- function(model, y, X.design, blocks,s.j.hat){
   beta.hat <- rep(0,ncol(X.design))
   k <- 0
@@ -229,7 +231,7 @@ ATL0andOtherl0 <- function(target_y, target_X, source_sel=NULL, source_data=NULL
 }
 
 
-## Returns MSE in coef estimates for models selected by l0 penalties
+## Returns MSE in coef estimates for a selected model
 mse.est <- function(model,y, X.design, beta_star){
   
   beta.est <- rep(0,length(beta_star))
@@ -384,7 +386,7 @@ lasso.scad.transglm.cv <- function(y, X.design, trans.glm = TRUE, source.data=NU
 }
 
 
-## Processes the seection output of simmulation
+## Returns false positives, false negatives, FDR, power from a simulation output
 postprocess.sel.sim <- function(sim.result.df,beta_star,blocks=NULL){
   sim.result.df['recovery']<-  sim.result.df$sel.model==paste(as.character(which(beta_star!=0)),collapse=",")
   sel.list <- lapply(sim.result.df$sel.model, model.char2vec)

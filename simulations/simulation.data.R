@@ -6,8 +6,26 @@
 path = "~/structuralTL/simulations/sim.data"
 
 data.sim = function(n.t, p.t, s.t, sd.t, n.s, p.s, sd.s,trans.inf){
+  #Input:
+  # - n.t: target sample size
+  # - p.t: target dimension
+  # - s.t: target number of nonzero coefficients
+  # - sd.t: error standard deviation in target linear model
+  # - n.s: a vector of source datasets sample size
+  # - p.s: a vector of source datasets dimension
+  # - sd.s: a vector of source datasets error standard deviation (linear model)
+  # - trans.inf: a vector of source datasets informativeness (each one of 
+  #   'v.informative', 'm.informative', 'adversarial')
+  #
+  # Output: a list where
+  # - target.data.diffbetmin: target dataset where the small signal is different across blocks
+  # - target.data.samebetmin: target dataset where the small signal is the same across blocks
+  # - source.data.covshift: a list with source datasets
+  # - beta.t: target data generating coefficients
+  # - beta.s: source data generating coefficients
   
-  # Storage objects
+  
+  # Set up objects to store output
   k = length(n.s)
   source.data.covshift = list()
   source.data.nocovshift = list()
@@ -55,10 +73,8 @@ data.sim = function(n.t, p.t, s.t, sd.t, n.s, p.s, sd.s,trans.inf){
     X.cov.s <- X.cov.s %*% diag(1/sqrt(diag(t(X.cov.s) %*% X.cov.s)/n.s.i))
     
     error = rnorm(n.s.i, sd = sd.s[[i]])
-    #y.nocov.s <- X.nocov.s %*% beta.s.i + error
     y.cov.s <- X.cov.s %*% beta.s.i + error
     colnames(X.cov.s) = sprintf('var%s',1:ncol(X.cov.s))
-    #source.data.nocovshift[[i]] = list(y=y.nocov.s, x=X.nocov.s)
     source.data.covshift[[i]] = list(y=y.cov.s, x=X.cov.s)
   }
   
@@ -85,7 +101,6 @@ data.sim = function(n.t, p.t, s.t, sd.t, n.s, p.s, sd.s,trans.inf){
   
   return(list(target.data.diffbetmin=target.data.diffbetmin,
               target.data.samebetmin=target.data.samebetmin,
-              #source.data.nocovshift = source.data.nocovshift,
               source.data.covshift = source.data.covshift,
               beta.t = data.frame(samebetmin = beta.t.samebetmin, diffbetmin = beta.t.diffbetmin),
               beta.s = store.beta.s))

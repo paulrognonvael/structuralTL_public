@@ -2,6 +2,17 @@
 path = "~/structuralTL/simulations/"
 
 TL.sim <- function(scenario, n.val=NULL, path, nb.sim=100){
+  #Input
+  # - scenario: scenario number between 1 and 6
+  # - n.val: target sample size
+  # - path: folder where the routines are read from and output saved
+  # - nb.sim: number of simulations between 1 and 100
+  
+  # Output
+  # - false positives, false negatives, estimation mse, cross-validated prediction
+  #   mse for ASTL0 and competing methods for each simulation
+  # - summaries of measures above across all simulations
+  
   require(mvtnorm)
   require(tidyverse)
   require(ggplot2)
@@ -19,8 +30,6 @@ TL.sim <- function(scenario, n.val=NULL, path, nb.sim=100){
   # Helper functions
   source(paste0(path,"routines.sim.app.R"))
   
-  # Scenario
-
   # Lists of methods
   l0method.vec <- c('EBIC','S.A.sd','S.Abis.sd',
                     'S.A.TL', 'S.Abis.TL')
@@ -118,18 +127,9 @@ TL.sim <- function(scenario, n.val=NULL, path, nb.sim=100){
 }
 
 set.seed(1278)
-for(scenario in 5){
+for(scenario in 1:6){
   cat('--------------------------------------------------------------','\n')
   cat('SCENARIO',scenario,'\n')
   cat('--------------------------------------------------------------','\n')
-  TL.sim(scenario,n.val=#c(50,seq(100,400,100),700)
-           400,path=path, nb.sim=50)
-}
-set.seed(1278)
-for(scenario in 5:6){
-  cat('--------------------------------------------------------------','\n')
-  cat('SCENARIO',scenario,'\n')
-  cat('--------------------------------------------------------------','\n')
-  TL.sim(scenario,n.val=#c(50,seq(100,400,100),700)
-           700,path=path, nb.sim=50)
+  TL.sim(scenario,n.val=c(50,seq(100,400,100),700),path=path, nb.sim=100)
 }
